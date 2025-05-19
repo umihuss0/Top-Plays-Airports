@@ -28,6 +28,10 @@ def render_upload_dropzone():
     )
     st.caption("Accepted file types: .xlsx, .csv. Drag-and-drop or click above.")
     
+    # --- ADD YOUR NEW INSTRUCTIONS HERE ---
+    st.markdown("**Directions:** Upload Hourly report sourced from PowerBI reporting.")
+    # --- END OF ADDED CODE ---
+    
     # If file is uploaded, process it
     if uploaded_file is not None and not st.session_state.get("file_processed", False):
         data = process_file(uploaded_file)
