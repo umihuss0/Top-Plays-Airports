@@ -28,7 +28,7 @@ AIRPORT_TO_MARKET = {
     "ORD": "Chicago", "PBI": "Palm Beach", "PHL": "Philadelphia", "PSC": "Tri-Cities",
     "RDU": "Raleigh-Durham", "ROA": "Roanoke–Blacksburg", "SAN": "San Diego",
     "SEA": "Seattle", "SFO": "San Francisco", "SMF": "Sacramento",
-    "SWF": "Hudson Valley / NY", "TLH": "Tallahassee", "VPS": "Destin-Fort Walton",
+    "SWF": "Hudson Valley / NY", "TLH": "Tallahassee", "VPS": "Destin-Fort Walton",  "SFS": "FBO",
 }
 
 AIRPORT_LONG_NAME = {
@@ -61,7 +61,7 @@ AIRPORT_LONG_NAME = {
     "ROA": "Roanoke-Blacksburg Regional Airport", "SAN": "San Diego International Airport",
     "SEA": "Seattle-Tacoma International Airport", "SFO": "San Francisco International Airport",
     "SMF": "Sacramento International Airport", "SWF": "New York Stewart International Airport",
-    "TLH": "Tallahassee International Airport", "VPS": "Destin-Fort Walton Beach Airport",
+    "TLH": "Tallahassee International Airport", "VPS": "Destin-Fort Walton Beach Airport", "SFS": "Various Private Aviation Terminals",
 }
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -338,7 +338,7 @@ def render_market_drilldown() -> None:
 
                 # ── PRIME PLAY WINDOW(S) SECTION FOR THIS AIRPORT (NEW) ──────────────
                 # Using h4 or a bolded st.markdown for subsection title
-                st.markdown('**Prime Play Window(s)**', unsafe_allow_html=False) # Simple bold text
+                st.markdown('**Prime Play Windows**', unsafe_allow_html=False) # Simple bold text
                 # or st.markdown('<h4 class="subsection-title">Prime Play Window(s)</h4>', unsafe_allow_html=True)
 
                 prime_windows_list_airport = find_prime_play_windows(hourly) # Pass the airport-specific hourly data
