@@ -1,0 +1,20 @@
+# ------------------------------------------------------------------
+# This GitHub Action runs on a schedule (every 30 minutes)
+# and sends a simple request (curl -I) to your Streamlit app.
+# Replace the URL below with YOUR actual Streamlit app address.
+# ------------------------------------------------------------------
+
+name: Keep Streamlit App Awake
+
+on:
+  schedule:
+    # Every 30 minutes
+    - cron: '*/30 * * * *'
+
+jobs:
+  ping_streamlit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send HTTP request to Streamlit app
+        run: |
+          curl -I https://top-plays-airports.streamlit.app || echo "Ping failed"
