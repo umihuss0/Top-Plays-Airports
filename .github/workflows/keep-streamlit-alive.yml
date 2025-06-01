@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------
-# This GitHub Action runs on a schedule (every 30 minutes)
+# This GitHub Action runs on a schedule (every 25 minutes)
 # and sends a simple request (curl -I) to your Streamlit app.
 # Replace the URL below with YOUR actual Streamlit app address.
 # ------------------------------------------------------------------
@@ -8,8 +8,8 @@ name: Keep Streamlit App Awake
 
 on:
   schedule:
-    # Every 30 minutes
-    - cron: '*/30 * * * *'
+    # Every 25 minutes
+    - cron: '*/25 * * * *'
 
 jobs:
   ping_streamlit:
