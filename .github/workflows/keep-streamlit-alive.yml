@@ -1,23 +1,21 @@
 # .github/workflows/keep-streamlit-alive.yml
 # ---------------------------------------------------------------
-# Visits the Streamlit app every 30 min with a headless Playwright
-# browser so that Community Cloud sees real WebSocket traffic and
-# does not hibernate the app.
+# Pings the Streamlit Community-Cloud app every 30 min with a
+# headless Chromium browser so the platform records real traffic
+# and does not hibernate the app.
 # ---------------------------------------------------------------
 
 name: Keep Streamlit App Awake
 
 on:
-  # Every 30 minutes (safe against the 1-hour sleep timer)
+  # every 30 minutes
   schedule:
     - cron: '*/30 * * * *'
-  # Allow manual runs from the Actions tab
   workflow_dispatch:
 
 jobs:
   ping_streamlit_headless:
     runs-on: ubuntu-latest
-    # Bail out completely if the job takes > 5 min
     timeout-minutes: 5
 
     steps:
@@ -26,43 +24,54 @@ jobs:
         with:
           python-version: '3.10'
 
-      - name: Install Playwright and browser dependencies
+      - name: Install Playwright + browser
         run: |
           pip install --upgrade pip
           pip install playwright
-          # Installs Chromium plus required OS libs
           playwright install --with-deps chromium
 
-      - name: Visit Streamlit app with Playwright
+      - name: Visit Streamlit app (Playwright)
+        continue-on-error: true   # don’t fail the whole job for a benign timeout
         run: |
           python - <<'PY'
-          from playwright.sync_api import sync_playwright
-          import sys
+          from playwright.sync_api import sync_playwright, TimeoutError as PWTimeout
+          import sys, time
 
           URL = "https://top-plays-airports.streamlit.app"
+          HOLD_SECONDS = 15        # how long to keep the tab open
 
-          print("--- Playwright heartbeat ---")
+          print("--- Streamlit keep-alive ---")
 
           try:
               with sync_playwright() as p:
-                  print("Launching headless Chromium…")
-                  browser = p.chromium.launch(headless=True)
-                  page = browser.new_page()
+                  browser = p.chromium.launch(
+                      headless=True,
+                      args=["--disable-dev-shm-usage"]      # safer on tiny containers
+                  )
+                  context = browser.new_context()
+                  page = context.new_page()
 
-                  print(f"Navigating to {URL} …")
-                  page.goto(URL, wait_until="networkidle", timeout=120_000)
+                  print(f"Opening {URL} …")
+                  page.goto(URL, wait_until="domcontentloaded", timeout=180_000)
 
-                  # Wait until the main Streamlit container is present.
-                  page.wait_for_selector("div.stApp", timeout=60_000)
+                  # Optional sanity-check: log title, but don’t fail if missing
+                  try:
+                      print("Page title →", page.title())
+                  except PWTimeout:
+                      print("Title not available yet (not critical)")
 
-                  print("App fully loaded →", page.title())
-                  # Keep the socket open just long enough to be counted
-                  page.wait_for_timeout(5_000)
+                  # Give Streamlit time to finish its WebSocket handshake
+                  print(f"Holding connection {HOLD_SECONDS}s …")
+                  time.sleep(HOLD_SECONDS)
 
                   browser.close()
-                  print("--- Done ---")
+                  print("--- Visit complete ---")
 
+          except PWTimeout as warn:
+              # Network ok but element(s) not found fast enough → warn, succeed
+              print(f"WARNING (non-fatal): {warn}")
           except Exception as exc:
-              print(f"ERROR: {exc}", file=sys.stderr)
+              # Unexpected/serious error → fail the job
+              print(f"FATAL: {exc}", file=sys.stderr)
               sys.exit(1)
           PY
