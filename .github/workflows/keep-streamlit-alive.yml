@@ -1,25 +1,25 @@
-# ------------------------------------------------------------------
-# This GitHub Action uses a headless browser (Playwright) to visit
-# the Streamlit app. This full browser emulation executes JavaScript
-# and establishes a WebSocket connection, which is required by
-# Streamlit Community Cloud to register as a real visit and
-# prevent hibernation.
-# ------------------------------------------------------------------
+# .github/workflows/keep-streamlit-alive.yml
+# ---------------------------------------------------------------
+# Visits the Streamlit app every 30 min with a headless Playwright
+# browser so that Community Cloud sees real WebSocket traffic and
+# does not hibernate the app.
+# ---------------------------------------------------------------
 
-name: Keep Streamlit App Awake (Headless Browser)
+name: Keep Streamlit App Awake
 
 on:
+  # Every 30 minutes (safe against the 1-hour sleep timer)
   schedule:
-    # Runs every 30 minutes. This is a safe interval for the 1-hour
-    # sleep timer.
     - cron: '*/30 * * * *'
-  workflow_dispatch: # Allows manual runs from the Actions tab
+  # Allow manual runs from the Actions tab
+  workflow_dispatch:
 
 jobs:
   ping_streamlit_headless:
     runs-on: ubuntu-latest
-    # Give the job a total of 5 minutes to complete
+    # Bail out completely if the job takes > 5 min
     timeout-minutes: 5
+
     steps:
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -28,52 +28,41 @@ jobs:
 
       - name: Install Playwright and browser dependencies
         run: |
+          pip install --upgrade pip
           pip install playwright
-          python -m playwright install --with-deps chromium
-        # The '--with-deps' flag installs necessary OS libraries
+          # Installs Chromium plus required OS libs
+          playwright install --with-deps chromium
 
-      - name: Run Playwright script to visit the app
+      - name: Visit Streamlit app with Playwright
         run: |
-          python -c "
-from playwright.sync_api import sync_playwright, expect
-import sys
+          python - <<'PY'
+          from playwright.sync_api import sync_playwright
+          import sys
 
-URL = 'https://top-plays-airports.streamlit.app'
+          URL = "https://top-plays-airports.streamlit.app"
 
-print('--- Starting Playwright Script ---')
+          print("--- Playwright heartbeat ---")
 
-try:
-    with sync_playwright() as p:
-        print(f'Launching browser...')
-        # We use Chromium, which is a lightweight and fast choice.
-        browser = p.chromium.launch(headless=True)
-        page = browser.new_page()
+          try:
+              with sync_playwright() as p:
+                  print("Launching headless Chromium…")
+                  browser = p.chromium.launch(headless=True)
+                  page = browser.new_page()
 
-        print(f'Navigating to {URL}...')
-        # Go to the page and wait for it to be fully loaded.
-        # 'networkidle' is a good state, it waits until there are no
-        # more network connections for at least 500 ms.
-        # Timeout is set to 2 minutes (120,000 ms) to be safe.
-        page.goto(URL, timeout=120000, wait_until='networkidle')
+                  print(f"Navigating to {URL} …")
+                  page.goto(URL, wait_until="networkidle", timeout=120_000)
 
-        # This is a crucial step: we wait for a specific element that
-        # only appears when the Streamlit app is truly ready.
-        # You may need to inspect your app and change 'stApp' if needed.
-        print('Waiting for a known Streamlit element to be visible...')
-        page.wait_for_selector('div.stApp', timeout=60000)
+                  # Wait until the main Streamlit container is present.
+                  page.wait_for_selector("div.stApp", timeout=60_000)
 
-        print('App seems to be fully loaded and interactive.')
-        print(f'Page Title: {page.title()}')
+                  print("App fully loaded →", page.title())
+                  # Keep the socket open just long enough to be counted
+                  page.wait_for_timeout(5_000)
 
-        # A small delay to ensure the session is registered.
-        page.wait_for_timeout(5000) # 5 seconds
+                  browser.close()
+                  print("--- Done ---")
 
-        print('Closing browser.')
-        browser.close()
-        print('--- Playwright Script Finished Successfully ---')
-
-except Exception as e:
-    print(f'An error occurred: {e}', file=sys.stderr)
-    # Exit with a non-zero status code to fail the GitHub Action
-    sys.exit(1)
-"
+          except Exception as exc:
+              print(f"ERROR: {exc}", file=sys.stderr)
+              sys.exit(1)
+          PY
