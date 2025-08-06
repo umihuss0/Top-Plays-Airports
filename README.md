@@ -2,6 +2,7 @@
 
 A Streamlit application for calculating and visualizing play rates across different markets and time periods.
 
+
 ## Features
 
 - File upload for CSV and Excel data
