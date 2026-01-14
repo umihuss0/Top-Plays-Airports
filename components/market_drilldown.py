@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+from io import BytesIO
 # import numpy as np # Not strictly needed if using .mean() on Series and handling empty slices
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -78,9 +79,13 @@ def extract_airport(network_code: str | float) -> str | None:
     return None
 
 def make_market_label(airport_code: str | None) -> str:
-    if not airport_code: return "Unknown Market"
+    if not airport_code: return "Roadside Markets"
     code_to_lookup = str(airport_code).strip().upper()
-    return AIRPORT_TO_MARKET.get(code_to_lookup, code_to_lookup)
+    market = AIRPORT_TO_MARKET.get(code_to_lookup)
+    if market:
+        return market
+    # If not a recognized airport code, treat as roadside
+    return "Roadside Markets"
 
 def format_hour(hour_24: int | float | None) -> str:
     if pd.isna(hour_24): return "-"
@@ -91,6 +96,128 @@ def format_hour(hour_24: int | float | None) -> str:
 
 def vertical_spacer(height_px: int = 24) -> None: # Renamed arg to avoid conflict with px module
     st.markdown(f"<div style='height:{height_px}px'></div>", unsafe_allow_html=True)
+
+def format_currency(amount: float | int | None, rounded: bool = False) -> str:
+    """Format a number as currency with $ sign and comma separators.
+
+    Args:
+        amount: The amount to format
+        rounded: If True, round to whole dollars (no decimals) for collapsed views
+    """
+    if pd.isna(amount) or amount is None:
+        return "$0"
+    if rounded:
+        return f"${int(round(amount)):,}"
+    return f"${amount:,.2f}" if isinstance(amount, float) else f"${int(amount):,}"
+
+def get_revenue_column(df: pd.DataFrame) -> str | None:
+    """Find the revenue column in the dataframe (handles various naming conventions)."""
+    possible_names = ["Revenue", "revenue", "REVENUE", "Revenue ($)", "revenue ($)", "Total Revenue"]
+    for name in possible_names:
+        if name in df.columns:
+            return name
+    return None
+
+def create_revenue_excel(df: pd.DataFrame, revenue_col: str, sorted_markets: list,
+                         advertiser_name: str = "", date_range: str = "") -> bytes:
+    """Create a formatted Excel file with revenue breakdown."""
+    output = BytesIO()
+
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Summary sheet
+        summary_data = []
+        for market_name in sorted_markets:
+            market_df = df[df["Market"] == market_name]
+            market_total = market_df[revenue_col].sum()
+            if market_total > 0:
+                summary_data.append({
+                    "Market": market_name,
+                    "Revenue": market_total
+                })
+
+        summary_df = pd.DataFrame(summary_data)
+        if not summary_df.empty:
+            # Add total row
+            total_row = pd.DataFrame([{"Market": "TOTAL", "Revenue": summary_df["Revenue"].sum()}])
+            summary_df = pd.concat([summary_df, total_row], ignore_index=True)
+
+        summary_df.to_excel(writer, sheet_name="Summary", index=False)
+
+        # Detailed breakdown sheet
+        detail_data = []
+        for market_name in sorted_markets:
+            market_df = df[df["Market"] == market_name]
+            network_revenue = (
+                market_df.groupby("Network_Code", as_index=False)[revenue_col]
+                .sum()
+                .sort_values(revenue_col, ascending=False)
+            )
+            for _, row in network_revenue.iterrows():
+                if row[revenue_col] > 0:
+                    detail_data.append({
+                        "Market": market_name,
+                        "Network Code": row["Network_Code"],
+                        "Revenue": row[revenue_col]
+                    })
+
+        detail_df = pd.DataFrame(detail_data)
+        if not detail_df.empty:
+            detail_df.to_excel(writer, sheet_name="Detailed Breakdown", index=False)
+
+        # Format the sheets
+        workbook = writer.book
+        for sheet_name in writer.sheets:
+            worksheet = writer.sheets[sheet_name]
+            # Set column widths
+            worksheet.column_dimensions['A'].width = 25
+            worksheet.column_dimensions['B'].width = 25
+            if sheet_name == "Detailed Breakdown":
+                worksheet.column_dimensions['C'].width = 15
+
+            # Format revenue column as currency
+            from openpyxl.styles import Font, Alignment, PatternFill, Border, Side
+            from openpyxl.utils import get_column_letter
+
+            # Header styling
+            header_fill = PatternFill(start_color="4F8EF7", end_color="4F8EF7", fill_type="solid")
+            header_font = Font(bold=True, color="FFFFFF")
+            thin_border = Border(
+                left=Side(style='thin', color='E0E0E0'),
+                right=Side(style='thin', color='E0E0E0'),
+                top=Side(style='thin', color='E0E0E0'),
+                bottom=Side(style='thin', color='E0E0E0')
+            )
+
+            for col_num, cell in enumerate(worksheet[1], 1):
+                cell.fill = header_fill
+                cell.font = header_font
+                cell.alignment = Alignment(horizontal='center')
+
+            # Roadside highlight (light red/pink)
+            roadside_fill = PatternFill(start_color="FEE2E2", end_color="FEE2E2", fill_type="solid")
+            roadside_font = Font(italic=True)
+
+            # Format data rows
+            for row in worksheet.iter_rows(min_row=2):
+                is_roadside = False
+                # Check if this row contains "Roadside Markets"
+                for cell in row:
+                    if cell.value == "Roadside Markets":
+                        is_roadside = True
+                        break
+
+                for cell in row:
+                    cell.border = thin_border
+                    if cell.column_letter in ['B', 'C'] and isinstance(cell.value, (int, float)):
+                        cell.number_format = '$#,##0.00'
+                    # Apply roadside styling
+                    if is_roadside:
+                        cell.fill = roadside_fill
+                        if cell.column_letter == 'A':
+                            cell.font = roadside_font
+
+    output.seek(0)
+    return output.getvalue()
 
 # ──────────────────────────────────────────────────────────────────────────────
 # Prime Play Window Finder Logic (Incorporating new scoring and edge trimming)
@@ -294,8 +421,129 @@ def render_market_drilldown() -> None:
         df["Airport"] = df["Airport"].apply(lambda x: str(x).strip().upper() if pd.notna(x) else None)
 
     df["Market"] = df["Airport"].apply(make_market_label)
+
+    # ── CHECK FOR REVENUE COLUMN ──────────────────────────────────────────────
+    revenue_col = get_revenue_column(df)
+    has_revenue = revenue_col is not None
+
+    if has_revenue:
+        df[revenue_col] = pd.to_numeric(df[revenue_col], errors='coerce').fillna(0)
+
     st.write("") # Creates a bit of space before the first expander
-    sorted_market_labels = sorted(df["Market"].dropna().unique().tolist())
+    # Sort markets alphabetically, but always put "Roadside Markets" at the end
+    all_markets = df["Market"].dropna().unique().tolist()
+    sorted_market_labels = sorted([m for m in all_markets if m != "Roadside Markets"])
+    if "Roadside Markets" in all_markets:
+        sorted_market_labels.append("Roadside Markets")
+
+    # ── ALL MARKET REVENUE SECTION (shown first, before individual markets) ────
+    if has_revenue:
+        total_revenue = df[revenue_col].sum()
+
+        # Try to extract advertiser name from data (look for Advertiser column or use generic label)
+        advertiser_col = None
+        for col_name in ["Advertiser", "advertiser", "ADVERTISER", "Advertiser Name"]:
+            if col_name in df.columns:
+                advertiser_col = col_name
+                break
+
+        advertiser_name = ""
+        if advertiser_col and not df[advertiser_col].dropna().empty:
+            # Get the most common advertiser name
+            advertiser_name = df[advertiser_col].mode().iloc[0] if not df[advertiser_col].mode().empty else ""
+
+        # Get date range from data
+        date_range_str = ""
+        date_col = None
+        for col_name in ["Date & Hour - EST", "Date", "date", "DATE", "Date & Hour"]:
+            if col_name in df.columns:
+                date_col = col_name
+                break
+
+        if date_col:
+            try:
+                dates = pd.to_datetime(df[date_col], errors='coerce').dropna()
+                if not dates.empty:
+                    min_date = dates.min().strftime("%m/%d/%Y")
+                    max_date = dates.max().strftime("%m/%d/%Y")
+                    date_range_str = f"{min_date} – {max_date}"
+            except:
+                pass
+
+        revenue_header_label = f"{advertiser_name} All Market Revenue" if advertiser_name else "All Market Revenue"
+
+        with st.expander(f"{revenue_header_label}   [{format_currency(total_revenue, rounded=True)}]", expanded=False):
+            # Show date range if available
+            if date_range_str:
+                st.markdown(f'<p style="color: #666; font-size: 0.85rem; margin: 0 0 12px 0;"><em>Date Range: {date_range_str}</em></p>', unsafe_allow_html=True)
+
+            # Build complete HTML for all markets
+            all_markets_html = '<div class="revenue-breakdown-card">'
+
+            # Group revenue by market and network code
+            for market_name in sorted_market_labels:
+                market_revenue_df = df[df["Market"] == market_name]
+                market_total_revenue = market_revenue_df[revenue_col].sum()
+
+                if market_total_revenue <= 0:
+                    continue
+
+                # Get airport code for this market (filter out None values)
+                airport_codes_in_market = [c for c in market_revenue_df["Airport"].dropna().unique() if c and c in AIRPORT_TO_MARKET]
+                airport_label = f"({', '.join(sorted(airport_codes_in_market))})" if airport_codes_in_market else ""
+
+                # Highlight roadside markets with different styling
+                is_roadside = market_name == "Roadside Markets"
+                market_title_style = "font-style: italic;" if is_roadside else ""
+                roadside_class = " roadside" if is_roadside else ""
+
+                all_markets_html += f'''<div class="market-revenue-item{roadside_class}">
+                    <div class="market-revenue-header">
+                        <span class="market-revenue-title" style="{market_title_style}">{market_name} {airport_label}</span>
+                        <span class="revenue-amount">{format_currency(market_total_revenue)}</span>
+                    </div>'''
+
+                # Breakdown by network code within this market
+                network_revenue = (
+                    market_revenue_df.groupby("Network_Code", as_index=False)[revenue_col]
+                    .sum()
+                    .sort_values(revenue_col, ascending=False)
+                )
+
+                for _, net_row in network_revenue.iterrows():
+                    net_code = net_row["Network_Code"]
+                    net_rev = net_row[revenue_col]
+                    if net_rev > 0:
+                        all_markets_html += f'''<div class="network-revenue-row">
+                            <span class="network-code-label">{net_code}</span>
+                            <span class="network-revenue-value">{format_currency(net_rev)}</span>
+                        </div>'''
+
+                all_markets_html += '</div>'
+
+            # Total row at the bottom
+            all_markets_html += f'''<div class="revenue-breakdown-row total-row">
+                <span style="font-weight: 600;">Total Revenue</span>
+                <span class="revenue-amount total">{format_currency(total_revenue)}</span>
+            </div></div>'''
+
+            st.markdown(all_markets_html, unsafe_allow_html=True)
+
+            # Download button for Excel export
+            vertical_spacer(12)
+            excel_data = create_revenue_excel(df, revenue_col, sorted_market_labels, advertiser_name, date_range_str)
+            file_name = f"{advertiser_name}_Revenue_Report.xlsx" if advertiser_name else "Revenue_Report.xlsx"
+            file_name = file_name.replace(" ", "_")
+
+            st.download_button(
+                label="Download Revenue Report",
+                data=excel_data,
+                file_name=file_name,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="secondary"
+            )
+
+        vertical_spacer(10)
 
     for market_group_name in sorted_market_labels:
         market_group_df = df[df["Market"] == market_group_name].copy()
@@ -312,10 +560,15 @@ def render_market_drilldown() -> None:
             expander_main_label = f"{market_name_from_dict} ({airport_code})"
             if long_name_from_dict:
                 expander_main_label += f" – {long_name_from_dict}"
-            
+
+            # Add revenue to the expander label if available (rounded for collapsed view)
+            if has_revenue:
+                market_revenue = market_df[revenue_col].sum()
+                expander_main_label += f"   [{format_currency(market_revenue, rounded=True)}]"
+
             network_display_items = [f"[{n}]" for n in networks]
             second_line_html = f'<span class="network-label">Networks used:</span> {", ".join(network_display_items) if network_display_items else "–"}'
-            
+
             with st.expander(expander_main_label, expanded=False):
                 st.markdown(second_line_html, unsafe_allow_html=True)
                 

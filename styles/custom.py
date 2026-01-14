@@ -131,8 +131,150 @@ def apply_custom_styles() -> None:
         
         /* Network label (already present, good) */
         span.network-label {
-            color: var(--text-muted); 
+            color: var(--text-muted);
             font-style: italic;
+        }
+
+        /* ——— Revenue display styles ——— */
+        .revenue-badge {
+            display: inline-flex;
+            align-items: center;
+            background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-left: auto;
+            white-space: nowrap;
+        }
+
+        .revenue-inline {
+            color: #059669;
+            font-weight: 600;
+            font-size: 0.9rem;
+        }
+
+        /* Market row with revenue */
+        .market-row-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            width: 100%;
+        }
+
+        /* Revenue breakdown card */
+        .revenue-breakdown-card {
+            background: var(--bg-card);
+            border-radius: 12px;
+            padding: 16px 20px;
+            border: 1px solid var(--border-color);
+            margin-bottom: 8px;
+        }
+
+        .revenue-breakdown-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #f0f0f0;
+        }
+
+        .revenue-breakdown-row:last-child {
+            border-bottom: none;
+        }
+
+        .revenue-breakdown-row.total-row {
+            border-top: 2px solid var(--border-color);
+            margin-top: 8px;
+            padding-top: 12px;
+            font-weight: 600;
+        }
+
+        .revenue-network-code {
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+            font-size: 0.85rem;
+            color: var(--brand-dark);
+            background: #f5f5f5;
+            padding: 2px 8px;
+            border-radius: 4px;
+        }
+
+        /* Revenue color hierarchy:
+           - Individual lines: neutral gray (least emphasis)
+           - Market subtotals: brand blue (medium emphasis)
+           - Total: green (highest emphasis - the result) */
+
+        .revenue-amount {
+            color: var(--brand-primary); /* Blue for market subtotals */
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .revenue-amount.total {
+            font-size: 1.1rem;
+            color: #059669; /* Green for final total */
+        }
+
+        /* All Market Revenue section */
+        .all-market-revenue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 4px 0;
+        }
+
+        .advertiser-label {
+            font-weight: 500;
+            color: var(--brand-dark);
+        }
+
+        .market-revenue-item {
+            background: #fafafa;
+            border-radius: 8px;
+            padding: 12px 16px;
+            margin-bottom: 12px;
+            border: 1px solid #e8e8e8;
+        }
+
+        .market-revenue-item.roadside {
+            background: #FEF2F2;
+            border: 1px solid #FECACA;
+        }
+
+        .market-revenue-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .market-revenue-title {
+            font-weight: 600;
+            color: var(--brand-dark);
+            font-size: 0.95rem;
+        }
+
+        .network-revenue-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 6px 0;
+            padding-left: 12px;
+        }
+
+        .network-code-label {
+            font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+            font-size: 0.8rem;
+            color: #666;
+        }
+
+        .network-revenue-value {
+            color: var(--text-muted); /* Gray for individual network lines */
+            font-weight: 500;
+            font-size: 0.9rem;
         }
         </style>
         """,
